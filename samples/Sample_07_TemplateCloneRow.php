@@ -53,6 +53,10 @@ $templateProcessor->setValue('userFirstName#3', 'Michael');
 $templateProcessor->setValue('userName#3', 'Ray');
 $templateProcessor->setValue('userPhone#3', '+1 428 889 775');
 
+
+//$templateProcessor->setImg('imageHolder', __DIR__ . DIRECTORY_SEPARATOR . 'resources/image.png');
+$templateProcessor->setImg('imageHolder', array('src' => __DIR__ . DIRECTORY_SEPARATOR . 'resources/image.png', 'swh' => '250'));
+
 echo date('H:i:s'), ' Saving the result document...', EOL;
 $templateProcessor->saveAs('results/Sample_07_TemplateCloneRow.docx');
 

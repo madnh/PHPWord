@@ -62,6 +62,11 @@ class TemplateProcessor
      */
     protected $tempDocumentFooters = array();
 
+    protected $_rels;
+    protected $_types;
+    protected $_countRels;
+
+
     /**
      * @since 0.12.0 Throws CreateTemporaryFileException and CopyFileException instead of Exception.
      *
@@ -101,6 +106,7 @@ class TemplateProcessor
             $index++;
         }
         $this->tempDocumentMainPart = $this->fixBrokenMacros($this->zipClass->getFromName($this->getMainPartName()));
+        $this->_countRels = 1000;
     }
 
     /**
@@ -147,7 +153,7 @@ class TemplateProcessor
 
     /**
      * Applies XSL style sheet to template's parts.
-     * 
+     *
      * Note: since the method doesn't make any guess on logic of the provided XSL style sheet,
      * make sure that output is correctly escaped. Otherwise you may get broken document.
      *
@@ -210,14 +216,6 @@ class TemplateProcessor
      */
     public function setValue($search, $replace, $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT)
     {
-        if (is_array($search)) {
-            foreach ($search as &$item) {
-                $item = self::ensureMacroCompleted($item);
-            }
-        } else {
-            $search = self::ensureMacroCompleted($search);
-        }
-
         if (is_array($replace)) {
             foreach ($replace as &$item) {
                 $item = self::ensureUtf8Encoded($item);
@@ -231,9 +229,130 @@ class TemplateProcessor
             $replace = $xmlEscaper->escape($replace);
         }
 
+        $this->setValueRaw($search, $replace, $limit);
+    }
+
+    public function setValueRaw($search, $replace, $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT)
+    {
+        if (is_array($search)) {
+            foreach ($search as &$item) {
+                $item = self::ensureMacroCompleted($item);
+            }
+        } else {
+            $search = self::ensureMacroCompleted($search);
+        }
+
         $this->tempDocumentHeaders = $this->setValueForPart($search, $replace, $this->tempDocumentHeaders, $limit);
         $this->tempDocumentMainPart = $this->setValueForPart($search, $replace, $this->tempDocumentMainPart, $limit);
         $this->tempDocumentFooters = $this->setValueForPart($search, $replace, $this->tempDocumentFooters, $limit);
+    }
+
+    /**
+     * Set a new image
+     *
+     * @param string $search
+     * @param string $replace
+     */
+    public function setImageValue($search, $replace)
+    {
+        // Sanity check
+        if (!file_exists($replace)) {
+            return;
+        }
+        // Delete current image
+        $this->zipClass->deleteName('word/media/' . $search);
+        // Add a new one
+        $this->zipClass->addFile($replace, 'word/media/' . $search);
+    }
+
+    public function setImg($strKey, $img)
+    {
+        $strKey = '${' . $strKey . '}';
+        $relationTmpl = '<Relationship Id="RID" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/IMG"/>';
+
+        $imgTmpl = '<w:pict><v:shape type="#_x0000_t75" style="width:WIDpx;height:HEIpx"><v:imagedata r:id="RID" o:title=""/></v:shape></w:pict>';
+
+        $toAdd = $toAddImg = $toAddType = '';
+        $aSearch = array('RID', 'IMG');
+        $aSearchType = array('IMG', 'EXT');
+        $this->_countRels++;
+
+        if (is_string($img)) {
+            $img = [
+                'src' => $img
+            ];
+        }
+
+        if (!file_exists($img['src'])) {
+            throw new \Exception('Image file not found: ' . $img['src']);
+        }
+
+        $imgParts = explode('.', trim($img['src']));
+        $imgExt = $imgParts[count($imgParts) - 1];
+        $imgName = 'img' . $this->_countRels . '.' . $imgExt;
+
+        $this->zipClass->deleteName('word/media/' . $imgName);
+        $this->zipClass->addFile($img['src'], 'word/media/' . $imgName);
+
+        $typeTmpl = '<Override PartName="/word/media/' . $imgName . '" ContentType="image/EXT"/>';
+
+        $rid = 'rId' . $this->_countRels;
+        list($img_width, $img_height) = getimagesize($img['src']);
+
+        if (isset($img['swh'])) //Image proportionally larger side
+        {
+            if ($img_width <= $img_height) {
+                $ht = (int)$img['swh'];
+                $ot = $img_width / $img_height;
+                $wh = (int)$img['swh'] * $ot;
+                $wh = round($wh);
+            }
+            if ($img_width >= $img_height) {
+                $wh = (int)$img['swh'];
+                $ot = $img_height / $img_width;
+                $ht = (int)$img['swh'] * $ot;
+                $ht = round($ht);
+            }
+            $img_width = $wh;
+            $img_height = $ht;
+        }
+
+        if (isset($img['size'])) {
+            $img_width = $img['size'][0];
+            $img_height = $img['size'][1];
+        }
+
+
+        $toAddImg .= str_replace(array('RID', 'WID', 'HEI'), array($rid, $img_width, $img_height), $imgTmpl);
+
+        if (isset($img['dataImg'])) {
+            $toAddImg .= '<w:br/><w:t>' . $this->limpiarString($img['dataImg']) . '</w:t><w:br/>';
+        }
+
+        $aReplace = array($imgName, $imgExt);
+        $toAddType .= str_replace($aSearchType, $aReplace, $typeTmpl);
+
+        $aReplace = array($rid, $imgName);
+        $toAdd .= str_replace($aSearch, $aReplace, $relationTmpl);
+
+        $this->setValueRaw($strKey, $toAddImg);
+
+        if ($this->_rels == "") {
+            $this->_rels = $this->zipClass->getFromName('word/_rels/document.xml.rels');
+            $this->_types = $this->zipClass->getFromName('[Content_Types].xml');
+        }
+
+        $this->_types = str_replace('</Types>', $toAddType, $this->_types) . '</Types>';
+        $this->_rels = str_replace('</Relationships>', $toAdd, $this->_rels) . '</Relationships>';
+    }
+
+    public function limpiarString($str)
+    {
+        return str_replace(
+            array('&', '<', '>', "\n"),
+            array('&amp;', '&lt;', '&gt;', "\n" . '<w:br/>'),
+            $str
+        );
     }
 
     /**
@@ -297,7 +416,8 @@ class TemplateProcessor
                 // If tmpXmlRow doesn't contain continue, this row is no longer part of the spanned row.
                 $tmpXmlRow = $this->getSlice($extraRowStart, $extraRowEnd);
                 if (!preg_match('#<w:vMerge/>#', $tmpXmlRow) &&
-                    !preg_match('#<w:vMerge w:val="continue" />#', $tmpXmlRow)) {
+                    !preg_match('#<w:vMerge w:val="continue" />#', $tmpXmlRow)
+                ) {
                     break;
                 }
                 // This row was a spanned row, update $rowEnd and search for the next row.
@@ -406,6 +526,10 @@ class TemplateProcessor
 
         foreach ($this->tempDocumentFooters as $index => $xml) {
             $this->zipClass->addFromString($this->getFooterName($index), $xml);
+        }
+        if ($this->_rels != "") {
+            $this->zipClass->addFromString('word/_rels/document.xml.rels', $this->_rels);
+            $this->zipClass->addFromString('[Content_Types].xml', $this->_types);
         }
 
         // Close zip file
