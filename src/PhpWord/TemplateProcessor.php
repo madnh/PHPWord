@@ -66,6 +66,8 @@ class TemplateProcessor
     protected $_types;
     protected $_countRels;
 
+    public $macro = array('${', '}');
+
 
     /**
      * @since 0.12.0 Throws CreateTemporaryFileException and CopyFileException instead of Exception.
@@ -107,6 +109,11 @@ class TemplateProcessor
         }
         $this->tempDocumentMainPart = $this->fixBrokenMacros($this->zipClass->getFromName($this->getMainPartName()));
         $this->_countRels = 1000;
+    }
+
+    public function setMacro($open, $close = '}')
+    {
+        $this->macro = array($open, $close);
     }
 
     /**
@@ -181,13 +188,17 @@ class TemplateProcessor
 
     /**
      * @param string $macro
+     * @param array $use_macro
      *
      * @return string
      */
-    protected static function ensureMacroCompleted($macro)
+    protected function ensureMacroCompleted($macro, $use_macro)
     {
-        if (substr($macro, 0, 2) !== '${' && substr($macro, -1) !== '}') {
-            $macro = '${' . $macro . '}';
+        if (!empty($use_macro[0]) && substr($macro, 0, strlen($use_macro[0])) !== $use_macro[0]) {
+            $macro = $use_macro[0] . $macro;
+        }
+        if (!empty($use_macro[1]) && substr($macro, strlen($macro) - strlen($use_macro[1])) !== $use_macro[1]) {
+            $macro .= $use_macro[1];
         }
 
         return $macro;
@@ -208,13 +219,29 @@ class TemplateProcessor
     }
 
     /**
+     * @param array|string $use_macro If null then use template's macro
+     * @return array
+     */
+    protected function getMacro($use_macro = null)
+    {
+        if (empty($use_macro) && $use_macro !== 0) {
+            return $this->macro;
+        }
+
+        $use_macro = (array)$use_macro;
+
+        return array($use_macro[0], $use_macro[count($use_macro) - 1]);
+    }
+
+    /**
      * @param mixed $search
      * @param mixed $replace
      * @param integer $limit
      *
+     * @param array|string $use_macro
      * @return void
      */
-    public function setValue($search, $replace, $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT)
+    public function setValue($search, $replace, $limit = null, $use_macro = null)
     {
         if (is_array($replace)) {
             foreach ($replace as &$item) {
@@ -229,17 +256,30 @@ class TemplateProcessor
             $replace = $xmlEscaper->escape($replace);
         }
 
-        $this->setValueRaw($search, $replace, $limit);
+        $this->setValueRaw($search, $replace, $limit, $use_macro);
     }
 
-    public function setValueRaw($search, $replace, $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT)
+    /**
+     * @param mixed $search
+     * @param mixed $replace
+     * @param integer $limit
+     * @param array|string $use_macro
+     * @internal param array|string $macro
+     */
+    public function setValueRaw($search, $replace, $limit = null, $use_macro = null)
     {
+        $macro = $this->getMacro($use_macro);
+
         if (is_array($search)) {
             foreach ($search as &$item) {
-                $item = self::ensureMacroCompleted($item);
+                $item = $this->ensureMacroCompleted($item, $macro);
             }
         } else {
-            $search = self::ensureMacroCompleted($search);
+            $search = $this->ensureMacroCompleted($search, $macro);
+        }
+
+        if (is_null($limit)) {
+            $limit = self::MAXIMUM_REPLACEMENTS_DEFAULT;
         }
 
         $this->tempDocumentHeaders = $this->setValueForPart($search, $replace, $this->tempDocumentHeaders, $limit);
@@ -265,9 +305,14 @@ class TemplateProcessor
         $this->zipClass->addFile($replace, 'word/media/' . $search);
     }
 
-    public function setImg($strKey, $img)
+    /**
+     * @param string $variableName
+     * @param string|array $img
+     * @throws \Exception
+     */
+    public function setImg($variableName, $img)
     {
-        $strKey = '${' . $strKey . '}';
+        $variableName = '${' . $variableName . '}';
         $relationTmpl = '<Relationship Id="RID" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/IMG"/>';
 
         $imgTmpl = '<w:pict><v:shape type="#_x0000_t75" style="width:WIDpx;height:HEIpx"><v:imagedata r:id="RID" o:title=""/></v:shape></w:pict>';
@@ -335,7 +380,7 @@ class TemplateProcessor
         $aReplace = array($rid, $imgName);
         $toAdd .= str_replace($aSearch, $aReplace, $relationTmpl);
 
-        $this->setValueRaw($strKey, $toAddImg);
+        $this->setValueRaw($variableName, $toAddImg);
 
         if ($this->_rels == "") {
             $this->_rels = $this->zipClass->getFromName('word/_rels/document.xml.rels');

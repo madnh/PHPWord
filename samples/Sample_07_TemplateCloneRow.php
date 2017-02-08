@@ -10,6 +10,10 @@ $templateProcessor->setValue('weekday', date('l'));            // On section/con
 $templateProcessor->setValue('time', date('H:i'));             // On footer
 $templateProcessor->setValue('serverName', realpath(__DIR__)); // On header
 
+$templateProcessor->setValue('name', 'Tom');
+$templateProcessor->setValue('old', '100', null, ['', '']); //Match string
+
+
 // Simple table
 $templateProcessor->cloneRow('rowValue', 10);
 
