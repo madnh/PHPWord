@@ -23,6 +23,7 @@ use PhpOffice\PhpWord\Exception\CopyFileException;
 use PhpOffice\PhpWord\Exception\CreateTemporaryFileException;
 use PhpOffice\PhpWord\Exception\Exception;
 use PhpOffice\PhpWord\Shared\ZipArchive;
+use PhpOffice\PhpWord\Style\Paragraph;
 use Zend\Stdlib\StringUtils;
 
 class TemplateProcessor
@@ -231,6 +232,41 @@ class TemplateProcessor
         $use_macro = (array)$use_macro;
 
         return array($use_macro[0], $use_macro[count($use_macro) - 1]);
+    }
+
+    /**
+     *
+     * @param $search
+     * @param $value
+     * @param bool $is_multi_line
+     * @param null $limit
+     * @param null $use_macro
+     * @throws \Exception
+     */
+    public function setText($search, $value, $is_multi_line = false, $limit = null, $use_macro = null)
+    {
+        if (!is_string($value)) {
+            throw new \Exception('Replace value must be string, search key is ' . $search);
+        }
+
+        $value = htmlspecialchars($value);
+
+        if ($is_multi_line) {
+            $value = preg_replace('~\R~u', '</w:t><w:br/><w:t>', $value);
+        }
+
+        $this->setValueRaw($search, $value, $limit, $use_macro);
+    }
+
+    /**
+     * @param $search
+     * @param $value
+     * @param null $limit
+     * @param null $use_macro
+     */
+    public function setMultiLineText($search, $value, $limit = null, $use_macro = null)
+    {
+        $this->setText($search, $value, true, $limit, $use_macro);
     }
 
     /**

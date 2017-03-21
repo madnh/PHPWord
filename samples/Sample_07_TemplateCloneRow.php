@@ -57,6 +57,9 @@ $templateProcessor->setValue('userFirstName#3', 'Michael');
 $templateProcessor->setValue('userName#3', 'Ray');
 $templateProcessor->setValue('userPhone#3', '+1 428 889 775');
 
+$multi_line_text = implode("\n", ['Text', 'value', 'in', 'multiple', 'of', 'lines']);
+$templateProcessor->setText('multi_line_text_1', $multi_line_text);
+$templateProcessor->setText('multi_line_text_2', $multi_line_text, true);
 
 //$templateProcessor->setImg('imageHolder', __DIR__ . DIRECTORY_SEPARATOR . 'resources/image.png');
 $templateProcessor->setImg('imageHolder', array('src' => __DIR__ . DIRECTORY_SEPARATOR . 'resources/image.png', 'swh' => '250'));
